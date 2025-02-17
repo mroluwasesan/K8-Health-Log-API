@@ -1,2 +1,2 @@
 # K8-Health-Log-API
-This integration monitors Kubernetes pod logs for errors and sends real-time error reports to Telex.im.
+This integration monitors Kubernetes pod logs for errors and sends real-time error reports to Telex.im. It supports customizable settings, including namespace selection, monitoring intervals, and Kubernetes authentication details (API server IP, port, CA certificate, and service account token). Built with FastAPI, this interval integration dynamically generates a kubeconfig file and ensures seamless communication with your Kubernetes cluster.
