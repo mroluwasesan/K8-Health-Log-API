@@ -35,7 +35,7 @@ def get_integration_json(request: Request):
                 "app_name": "K8s Health Monitor",
                 "app_description": "Monitors Kubernetes pod logs for errors.",
                 "app_url": base_url,
-                "app_logo": "https://drive.google.com/file/d/1I3npzXE8bO6SJ9wPyAeZ8zplp2uxpN5o/view?usp=share_link",
+                "app_logo": "https://i.imgur.com/lZqvffp.png",
                 "background_color": "#fff"
             },
             "integration_category": "Monitoring & Logging",
