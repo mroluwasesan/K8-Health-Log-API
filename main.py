@@ -40,6 +40,9 @@ def get_integration_json(request: Request):
             },
             "integration_category": "Monitoring & Logging",
             "integration_type": "interval",
+            "key_features": ["- monitors kubernetes"],
+            "author": "Rotimi Oluwasesan",
+            "integration_category": "Monitoring & Logging",
             "settings": [
                 {
                     "label": "namespace",
