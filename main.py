@@ -22,7 +22,7 @@ class MonitorPayload(BaseModel):
     settings: List[Setting]
 
 # Integration JSON Endpoint
-@app.get("/api/integration")
+@app.get("/api/integration.json")
 def get_integration_json(request: Request):
     base_url = str(request.base_url).rstrip("/")
     return {
@@ -84,8 +84,8 @@ def get_integration_json(request: Request):
                     "description": "The service account token for authenticating with the Kubernetes API server."
                 }
             ],
-            "target_url": f"{base_url}/api/integration/target",
-            "tick_url": f"{base_url}/api/integration/tick"
+            "target_url": f"{base_url}/api/target",
+            "tick_url": f"{base_url}/api/tick"
         }
     }
 
@@ -207,13 +207,13 @@ async def monitor_task(payload: MonitorPayload):
         await client.post(payload.return_url, json=data)
 
 # Tick Endpoint
-@app.post("/api/integration/tick", status_code=202)
+@app.post("/api/tick", status_code=202)
 def monitor(payload: MonitorPayload, background_tasks: BackgroundTasks):
     background_tasks.add_task(monitor_task, payload)
     return {"status": "accepted"}
 
-# Target Endpoint (Optional for interval integrations)
-@app.post("/api/integration/target")
-def target(payload: Dict[str, Any]):
-    # Handle incoming data from Telex (if needed)
-    return {"status": "received"}
+# # Target Endpoint (Optional for interval integrations)
+# @app.post("/api/target")
+# def target(payload: Dict[str, Any]):
+#     # Handle incoming data from Telex (if needed)
+#     return {"status": "received"}
