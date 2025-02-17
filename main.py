@@ -1,8 +1,8 @@
-from fastapi import FastAPI, Request, BackgroundTasks, HTTPException
+from fastapi import FastAPI, Request, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import httpx
 import os
 import yaml
@@ -21,11 +21,11 @@ class MonitorPayload(BaseModel):
     return_url: str
     settings: List[Setting]
 
-# Integration JSON Endpoint
-@app.get("/api/integration.json")
-def get_integration_json(request: Request):
+# Integration JSON Endpoint with format=json support
+@app.get("/api/integration")
+def get_integration_json(request: Request, format: Optional[str] = Query(None, description="Set to 'json' to return JSON response")):
     base_url = str(request.base_url).rstrip("/")
-    return {
+    integration_data = {
         "data": {
             "date": {
                 "created_at": "2025-02-17",
@@ -88,6 +88,13 @@ def get_integration_json(request: Request):
             "tick_url": f"{base_url}/api/tick"
         }
     }
+
+    # If format=json is provided, return the JSON response
+    if format == "json":
+        return integration_data
+
+    # Otherwise, return a plain response (or customize as needed)
+    return {"message": "Integration data available", "data": integration_data}
 
 # Function to generate kubeconfig
 def generate_kubeconfig(api_server_ip: str, api_server_port: str, ca_cert: str, service_account_token: str) -> str:
