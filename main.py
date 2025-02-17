@@ -221,32 +221,3 @@ def monitor(payload: MonitorPayload, background_tasks: BackgroundTasks):
 # def target(payload: Dict[str, Any]):
 #     # Handle incoming data from Telex (if needed)
 #     return {"status": "received"}
-
-
-
-
-
-
-
-
-{"data":
- {"descriptions":{
-     "app_name":"ChatBot",
-     "app_description":"A chatbot application",
-     "app_logo":"https://img.freepik.com/free-vector/cartoon-style-robot-vectorart_78370-4103.jpg?t=st=1739712365~exp=1739715965~hmac=0529c037fe9053bd424f85f02362a463e50b32d0e06f43e0380d710d0b9c7d50&w=740",
-     "app_url":"https://chatbot-3nxe.onrender.com",
-     "background_color":"#fff"},
-     "integration_type":"interval",
-     "key_features":["-chatbot"],
-     "integration_category":"AI & Machine Learning",
-     "settings":
-     [{"label":"message",
-       "type":"text",
-       "required":true,
-       "default":"Hi"},
-       {"label":"interval",
-        "type":"text",
-        "required":true,
-        "default":"* * * * *"}],
-        "tick_url":"https://chatbot-3nxe.onrender.com/tick",
-        "target_url":"https://ping.telex.im/v1/webhooks/01951104-c02f-7920-ba4e-31fd5b4d438f"}}
