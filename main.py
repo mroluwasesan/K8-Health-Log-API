@@ -116,7 +116,7 @@ def generate_kubeconfig(api_server_ip: str, api_server_port: str, ca_cert: str, 
         "kind": "Config",
         "clusters": [
             {
-                "name": "my-cluster",
+                "name": "kubernetes",
                 "cluster": {
                     "server": f"https://{api_server_ip}:{api_server_port}",
                     "certificate-authority-data": ca_cert
@@ -135,7 +135,7 @@ def generate_kubeconfig(api_server_ip: str, api_server_port: str, ca_cert: str, 
             {
                 "name": "my-context",
                 "context": {
-                    "cluster": "my-cluster",
+                    "cluster": "kubernetes",
                     "user": "k8s-monitor"
                 }
             }
