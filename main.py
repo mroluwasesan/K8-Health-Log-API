@@ -102,10 +102,12 @@ def get_integration_json(request: Request):
                     "description": "The service account token for authenticating with the Kubernetes API server."
                 }
             ],
-    
+
+            "target_url": f"{base_url}/api/target",
             "tick_url": f"{base_url}/api/tick"
         }
     }
+
 
 # Function to generate kubeconfig
 def generate_kubeconfig(api_server_ip: str, api_server_port: str, ca_cert: str, service_account_token: str) -> str:
