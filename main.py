@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
+from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Any
 import httpx
 import os
@@ -20,6 +21,18 @@ class MonitorPayload(BaseModel):
     channel_id: str
     return_url: str
     settings: List[Setting]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://staging.telextest.im", "http://telextest.im", "https://staging.telex.im", "https://telex.im"], # NB: telextest is a local url
+    allow_credentials=True,
+    allow_methods=["*"],  
+    allow_headers=["*"],
+)
+
+@app.get("/logo")
+def get_logo():
+    return FileResponse("uptime.png")
 
 # Integration JSON Endpoint
 @app.get("/api/integration.json")
@@ -88,7 +101,7 @@ def get_integration_json(request: Request):
                     "description": "The service account token for authenticating with the Kubernetes API server."
                 }
             ],
-            "target_url": f"{base_url}/api/target",
+    
             "tick_url": f"{base_url}/api/tick"
         }
     }
@@ -216,8 +229,4 @@ def monitor(payload: MonitorPayload, background_tasks: BackgroundTasks):
     background_tasks.add_task(monitor_task, payload)
     return {"status": "accepted"}
 
-# # Target Endpoint (Optional for interval integrations)
-# @app.post("/api/target")
-# def target(payload: Dict[str, Any]):
-#     # Handle incoming data from Telex (if needed)
-#     return {"status": "received"}
+
