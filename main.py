@@ -39,7 +39,7 @@ def get_logo():
 @app.get("/api/integration.json")
 def get_integration_json(request: Request):
     base_url = str(request.base_url).rstrip("/")
-    integration_json = {
+    return {
         "data": {
             "date": {
                 "created_at": "2025-02-17",
@@ -107,7 +107,6 @@ def get_integration_json(request: Request):
             "tick_url": f"{base_url}/api/tick"
         }
     }
-    return integration_json
 
 
 # Function to generate kubeconfig
