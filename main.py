@@ -39,7 +39,9 @@ def get_logo():
 @app.get("/api/integration.json")
 def get_integration_json(request: Request):
     base_url = str(request.base_url).rstrip("/")
-    base_url = base_url.replace("\\", "/")  # Fix double backslashes
+    if base_url.endswith("//"):
+        base_url = base_url.rstrip("/")  # Remove trailing slashes
+    base_url = base_url.replace("///", "//")
     return {
         "data": {
             "date": {
