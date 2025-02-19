@@ -152,7 +152,8 @@ def generate_kubeconfig(
     )
 
     # Save the populated kubeconfig to a file
-    kubeconfig_path = "/tmp/kubeconfig.yaml"
+    home_dir = os.environ.get("HOME")
+    kubeconfig_path = f"{home_dir}/K8-Health-Log-API/kubeconfig_template.yaml"
     with open(kubeconfig_path, "w") as file:
         file.write(kubeconfig_content)
 
