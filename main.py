@@ -8,6 +8,8 @@ from typing import List, Dict, Any
 import httpx
 import yaml
 import logging
+import os
+from string import Template
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -104,7 +106,7 @@ def get_integration_json(request: Request):
                     "type": "text",
                     "required": True,
                     "default": "",
-                    "description": "The service account token for authenticating with the Kubernetes API server. (kubectl get secrets -o jsonpath='{.items[?(@.metadata.annotations[\"kubernetes\.io/service-account\.name\"]==\"default\")].data.token}' | base64 --decode)"
+                    "description": "The service account token for authenticating with the Kubernetes API server. (kubectl get secrets -o jsonpath='{.items[?(@.metadata.annotations[\"kubernetes.io/service-account.name\"]==\"default\")].data.token}' | base64 --decode)"
                 },
                 {
                     "label": "cluster_name",
@@ -135,42 +137,27 @@ def generate_kubeconfig(
     cluster_name: str,
     user_name: str,
 ) -> str:
-    kubeconfig = {
-        "apiVersion": "v1",
-        "kind": "Config",
-        "clusters": [
-            {
-                "name": cluster_name,
-                "cluster": {
-                    "server": f"https://{api_server_ip}:{api_server_port}",
-                    "certificate-authority-data": ca_cert
-                }
-            }
-        ],
-        "users": [
-            {
-                "name": user_name,
-                "user": {
-                    "token": service_account_token
-                }
-            }
-        ],
-        "contexts": [
-            {
-                "name": "my-context",
-                "context": {
-                    "cluster": cluster_name,
-                    "user": user_name
-                }
-            }
-        ],
-        "current-context": "my-context"
-    }
+    # Load the kubeconfig template
+    with open("kubeconfig_template.yaml", "r") as file:
+        template = Template(file.read())
 
-    # Save kubeconfig to a file
+    # Populate the template with user input
+    kubeconfig_content = template.substitute(
+        cluster_name=cluster_name,
+        api_server_ip=api_server_ip,
+        api_server_port=api_server_port,
+        ca_cert=ca_cert,
+        user_name=user_name,
+        service_account_token=service_account_token,
+    )
+
+    # Save the populated kubeconfig to a file
     kubeconfig_path = "/tmp/kubeconfig.yaml"
-    with open(kubeconfig_path, "w") as f:
-        yaml.dump(kubeconfig, f)
+    with open(kubeconfig_path, "w") as file:
+        file.write(kubeconfig_content)
+
+    # Export the KUBECONFIG environment variable
+    os.environ["KUBECONFIG"] = kubeconfig_path
 
     return kubeconfig_path
 
