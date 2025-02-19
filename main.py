@@ -1,6 +1,5 @@
 
 
-
 from fastapi import FastAPI, Request, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from kubernetes import client, config
@@ -91,6 +90,27 @@ def get_integration_json(request: Request):
                     "description": "The IP address of the Kubernetes API server."
                 },
                 {
+                    "label": "api_server_port",
+                    "type": "text",
+                    "required": True,
+                    "default": "6443",
+                    "description": "The port of the Kubernetes API server."
+                },
+                {
+                    "label": "ca_cert",
+                    "type": "text",
+                    "required": True,
+                    "default": "",
+                    "description": "The base64-encoded CA certificate for the Kubernetes cluster."
+                },
+                {
+                    "label": "service_account_token",
+                    "type": "text",
+                    "required": True,
+                    "default": "",
+                    "description": "The service account token for authenticating with the Kubernetes API server."
+                },
+                {
                     "label": "ssh_username",
                     "type": "text",
                     "required": True,
@@ -176,6 +196,9 @@ async def monitor_task(payload: MonitorPayload):
 
         namespace = settings.get("namespace", "default")
         api_server_ip = settings.get("api_server_ip")
+        api_server_port = settings.get("api_server_port", "6443")
+        ca_cert = settings.get("ca_cert")
+        service_account_token = settings.get("service_account_token")
         ssh_username = settings.get("ssh_username")
         ssh_password = settings.get("ssh_password")
         ssh_port = settings.get("ssh_port", "22")
