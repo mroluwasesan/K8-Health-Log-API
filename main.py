@@ -1,3 +1,6 @@
+
+
+
 from fastapi import FastAPI, Request, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from kubernetes import client, config
@@ -9,6 +12,7 @@ import httpx
 import os
 import yaml
 import logging
+import subprocess
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -87,25 +91,25 @@ def get_integration_json(request: Request):
                     "description": "The IP address of the Kubernetes API server."
                 },
                 {
-                    "label": "api_server_port",
-                    "type": "text",
-                    "required": True,
-                    "default": "6443",
-                    "description": "The port of the Kubernetes API server."
-                },
-                {
-                    "label": "ca_cert",
+                    "label": "ssh_username",
                     "type": "text",
                     "required": True,
                     "default": "",
-                    "description": "The base64-encoded CA certificate for the Kubernetes cluster."
+                    "description": "The SSH username for the Kubernetes server."
                 },
                 {
-                    "label": "service_account_token",
-                    "type": "text",
+                    "label": "ssh_password",
+                    "type": "password",
                     "required": True,
                     "default": "",
-                    "description": "The service account token for authenticating with the Kubernetes API server."
+                    "description": "The SSH password for the Kubernetes server."
+                },
+                {
+                    "label": "ssh_port",
+                    "type": "text",
+                    "required": False,
+                    "default": "22",
+                    "description": "The SSH port for the Kubernetes server."
                 }
             ],
             "target_url": f"{base_url}/api/target",
@@ -113,78 +117,55 @@ def get_integration_json(request: Request):
         }
     }
 
-# Function to generate kubeconfig
-def generate_kubeconfig(api_server_ip: str, api_server_port: str, ca_cert: str, service_account_token: str) -> str:
-    kubeconfig = {
-        "apiVersion": "v1",
-        "kind": "Config",
-        "clusters": [
-            {
-                "name": "kubernetes",
-                "cluster": {
-                    "server": f"https://{api_server_ip}:{api_server_port}",
-                    "certificate-authority-data": ca_cert
-                }
-            }
-        ],
-        "users": [
-            {
-                "name": "k8s-monitor",
-                "user": {
-                    "token": service_account_token
-                }
-            }
-        ],
-        "contexts": [
-            {
-                "name": "my-context",
-                "context": {
-                    "cluster": "kubernetes",
-                    "user": "k8s-monitor"
-                }
-            }
-        ],
-        "current-context": "my-context"
-    }
+# Function to fetch error logs using SSH
+def fetch_error_logs_ssh(
+    server_ip: str,
+    ssh_username: str,
+    ssh_password: str,
+    ssh_port: str,
+    namespace: str,
+) -> List[Dict[str, Any]]:
+    # Define the error pattern
+    ERROR_PATTERN = "Error|Failed|CrashLoopBackOff"
 
-    # Save kubeconfig to a file
-    kubeconfig_path = "/tmp/kubeconfig.yaml"
-    with open(kubeconfig_path, "w") as f:
-        yaml.dump(kubeconfig, f)
+    # Define the SSH command
+    ssh_command = f"""
+    kubectl get pods -n {namespace} --no-headers -o custom-columns=":metadata.name" | while read POD; do
+        kubectl logs "\$POD" -n {namespace} 2>&1
+    done | grep -E "{ERROR_PATTERN}"
+    """
 
-    return kubeconfig_path
-
-# Function to fetch pod logs and check for errors
-def fetch_error_logs(namespace: str) -> List[Dict[str, Any]]:
-    v1 = client.CoreV1Api()
-    error_reports = []
+    # Use sshpass to execute the command remotely
+    command = [
+        "sshpass",
+        "-p", ssh_password,
+        "ssh",
+        "-p", ssh_port,
+        "-o", "LogLevel=ERROR",
+        "-o", "UserKnownHostsFile=/dev/null",
+        "-o", "StrictHostKeyChecking=no",
+        f"{ssh_username}@{server_ip}",
+        ssh_command
+    ]
 
     try:
-        # Fetch all pods in the specified namespace
-        pods = v1.list_namespaced_pod(namespace)
-        for pod in pods.items:
-            pod_name = pod.metadata.name
+        # Execute the command and capture the output
+        result = subprocess.run(command, capture_output=True, text=True, check=True)
+        logs = result.stdout.splitlines()
 
-            # Fetch logs for the pod
-            logs = []
-            try:
-                pod_logs = v1.read_namespaced_pod_log(pod_name, namespace)
-                logs = pod_logs.split("\n")
-            except ApiException as e:
-                logs = [f"Failed to fetch logs: {str(e)}"]
+        # Format the logs into a list of dictionaries
+        error_reports = []
+        if logs:
+            error_reports.append({
+                "namespace": namespace,
+                "logs": logs
+            })
 
-            # Check for errors in logs
-            error_logs = [log for log in logs if "error" in log.lower()]
-            if error_logs:
-                error_reports.append({
-                    "pod_name": pod_name,
-                    "namespace": namespace,
-                    "logs": error_logs
-                })
-    except ApiException as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch pod logs: {str(e)}")
+        return error_reports
 
-    return error_reports
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to fetch logs via SSH: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch logs via SSH: {str(e)}")
 
 # Background task to monitor Kubernetes logs
 async def monitor_task(payload: MonitorPayload):
@@ -195,32 +176,22 @@ async def monitor_task(payload: MonitorPayload):
 
         namespace = settings.get("namespace", "default")
         api_server_ip = settings.get("api_server_ip")
-        api_server_port = settings.get("api_server_port", "6443")
-        ca_cert = settings.get("ca_cert")
-        service_account_token = settings.get("service_account_token")
+        ssh_username = settings.get("ssh_username")
+        ssh_password = settings.get("ssh_password")
+        ssh_port = settings.get("ssh_port", "22")
 
         # Validate required settings
-        if not api_server_ip or not ca_cert or not service_account_token:
-            raise HTTPException(status_code=400, detail="Missing required settings: api_server_ip, ca_cert, or service_account_token")
+        if not api_server_ip or not ssh_username or not ssh_password:
+            raise HTTPException(status_code=400, detail="Missing required settings: api_server_ip, ssh_username, or ssh_password")
 
-        # Generate kubeconfig
-        kubeconfig_path = generate_kubeconfig(api_server_ip, api_server_port, ca_cert, service_account_token)
-        logger.info(f"Kubeconfig generated at: {kubeconfig_path}")
-
-        # Load kubeconfig
-        try:
-            config.load_kube_config(config_file=kubeconfig_path)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to load kubeconfig: {str(e)}")
-
-        # Fetch error logs
-        error_reports = fetch_error_logs(namespace)
+        # Fetch error logs using SSH
+        error_reports = fetch_error_logs_ssh(api_server_ip, ssh_username, ssh_password, ssh_port, namespace)
         logger.info(f"Error reports: {error_reports}")
 
         # Prepare message for Telex
         if error_reports:
             message = "\n".join([
-                f"Pod: {report['pod_name']}, Namespace: {report['namespace']}\n" +
+                f"Namespace: {report['namespace']}\n" +
                 "\n".join(report['logs'])
                 for report in error_reports
             ])
