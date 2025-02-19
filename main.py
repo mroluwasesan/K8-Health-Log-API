@@ -8,6 +8,11 @@ from typing import List, Dict, Any
 import httpx
 import os
 import yaml
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
@@ -23,14 +28,16 @@ class MonitorPayload(BaseModel):
     return_url: str
     settings: List[Setting]
 
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://staging.telextest.im", "http://telextest.im", "https://staging.telex.im", "https://telex.im"], # NB: telextest is a local url
+    allow_origins=["http://staging.telextest.im", "http://telextest.im", "https://staging.telex.im", "https://telex.im"],
     allow_credentials=True,
-    allow_methods=["*"],  
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Serve the logo
 @app.get("/logo")
 def get_logo():
     return FileResponse("uptime.png")
@@ -56,7 +63,6 @@ def get_integration_json(request: Request):
             "integration_type": "interval",
             "key_features": ["- monitors kubernetes"],
             "author": "Rotimi Oluwasesan",
-            "integration_category": "Monitoring & Logging",
             "settings": [
                 {
                     "label": "namespace",
@@ -102,12 +108,10 @@ def get_integration_json(request: Request):
                     "description": "The service account token for authenticating with the Kubernetes API server."
                 }
             ],
-
             "target_url": f"{base_url}/api/target",
             "tick_url": f"{base_url}/api/tick"
         }
     }
-
 
 # Function to generate kubeconfig
 def generate_kubeconfig(api_server_ip: str, api_server_port: str, ca_cert: str, service_account_token: str) -> str:
@@ -184,52 +188,64 @@ def fetch_error_logs(namespace: str) -> List[Dict[str, Any]]:
 
 # Background task to monitor Kubernetes logs
 async def monitor_task(payload: MonitorPayload):
-    # Extract settings
-    settings = {s.label: s.default for s in payload.settings}
-    namespace = settings.get("namespace", "default")
-    api_server_ip = settings.get("api_server_ip")
-    api_server_port = settings.get("api_server_port", "6443")
-    ca_cert = settings.get("ca_cert")
-    service_account_token = settings.get("service_account_token")
-
-    # Generate kubeconfig
-    kubeconfig_path = generate_kubeconfig(api_server_ip, api_server_port, ca_cert, service_account_token)
-
-    # Load kubeconfig
     try:
-        config.load_kube_config(config_file=kubeconfig_path)
+        # Extract settings
+        settings = {s.label: s.default for s in payload.settings}
+        logger.info(f"Settings received: {settings}")
+
+        namespace = settings.get("namespace", "default")
+        api_server_ip = settings.get("api_server_ip")
+        api_server_port = settings.get("api_server_port", "6443")
+        ca_cert = settings.get("ca_cert")
+        service_account_token = settings.get("service_account_token")
+
+        # Validate required settings
+        if not api_server_ip or not ca_cert or not service_account_token:
+            raise HTTPException(status_code=400, detail="Missing required settings: api_server_ip, ca_cert, or service_account_token")
+
+        # Generate kubeconfig
+        kubeconfig_path = generate_kubeconfig(api_server_ip, api_server_port, ca_cert, service_account_token)
+        logger.info(f"Kubeconfig generated at: {kubeconfig_path}")
+
+        # Load kubeconfig
+        try:
+            config.load_kube_config(config_file=kubeconfig_path)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to load kubeconfig: {str(e)}")
+
+        # Fetch error logs
+        error_reports = fetch_error_logs(namespace)
+        logger.info(f"Error reports: {error_reports}")
+
+        # Prepare message for Telex
+        if error_reports:
+            message = "\n".join([
+                f"Pod: {report['pod_name']}, Namespace: {report['namespace']}\n" +
+                "\n".join(report['logs'])
+                for report in error_reports
+            ])
+        else:
+            message = "No errors found in Kubernetes logs."
+
+        # Data follows Telex webhook format
+        data = {
+            "message": message,
+            "username": "K8s Health Monitor",
+            "event_name": "K8s Error Report",
+            "status": "error" if error_reports else "success"
+        }
+
+        # Send data to Telex
+        async with httpx.AsyncClient() as client:
+            await client.post(payload.return_url, json=data)
+            logger.info(f"Data sent to Telex: {data}")
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to load kubeconfig: {str(e)}")
-
-    # Fetch error logs
-    error_reports = fetch_error_logs(namespace)
-
-    # Prepare message for Telex
-    if error_reports:
-        message = "\n".join([
-            f"Pod: {report['pod_name']}, Namespace: {report['namespace']}\n" +
-            "\n".join(report['logs'])
-            for report in error_reports
-        ])
-    else:
-        message = "No errors found in Kubernetes logs."
-
-    # Data follows Telex webhook format
-    data = {
-        "message": message,
-        "username": "K8s Health Monitor",
-        "event_name": "K8s Error Report",
-        "status": "error" if error_reports else "success"
-    }
-
-    # Send data to Telex
-    async with httpx.AsyncClient() as client:
-        await client.post(payload.return_url, json=data)
+        logger.error(f"Error in monitor_task: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Tick Endpoint
 @app.post("/api/tick", status_code=202)
 def monitor(payload: MonitorPayload, background_tasks: BackgroundTasks):
     background_tasks.add_task(monitor_task, payload)
     return {"status": "accepted"}
-
-
