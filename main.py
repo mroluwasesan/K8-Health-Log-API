@@ -193,24 +193,66 @@ def fetch_error_logs(namespace: str) -> List[Dict[str, Any]]:
         for pod in pods.items:
             pod_name = pod.metadata.name
 
-            # Fetch logs for the pod
-            logs = []
             try:
-                pod_logs = v1.read_namespaced_pod_log(pod_name, namespace)
+                # Enhanced log fetching with more options
+                pod_logs = v1.read_namespaced_pod_log(
+                    pod_name, 
+                    namespace,
+                    tail_lines=1000,  # Get last 1000 lines
+                    timestamps=True,   # Include timestamps
+                    previous=False     # Current container logs
+                )
                 logs = pod_logs.split("\n")
-            except ApiException as e:
-                logs = [f"Failed to fetch logs: {str(e)}"]
 
-            # Check for errors in logs
-            error_logs = [log for log in logs if "error" in log.lower()]
-            if error_logs:
+                # Enhanced error detection
+                error_logs = []
+                for i, log in enumerate(logs):
+                    # Check for various error indicators
+                    if any(indicator in log.lower() for indicator in [
+                        "error",
+                        "exception",
+                        "fail",
+                        "fatal",
+                        "panic",
+                        "critical"
+                    ]):
+                        # Include context (2 lines before and after)
+                        start_idx = max(0, i - 2)
+                        end_idx = min(len(logs), i + 3)
+                        context_logs = logs[start_idx:end_idx]
+                        error_logs.extend(context_logs)
+                        error_logs.append("---")  # Separator
+
+                if error_logs:
+                    error_reports.append({
+                        "pod_name": pod_name,
+                        "namespace": namespace,
+                        "logs": error_logs,
+                        "status": pod.status.phase,
+                        "container_statuses": [
+                            {
+                                "name": status.name,
+                                "ready": status.ready,
+                                "restart_count": status.restart_count,
+                                "state": str(status.state)
+                            }
+                            for status in (pod.status.container_statuses or [])
+                        ]
+                    })
+
+            except ApiException as e:
                 error_reports.append({
                     "pod_name": pod_name,
                     "namespace": namespace,
-                    "logs": error_logs
+                    "error": f"Failed to fetch logs: {str(e)}",
+                    "status": pod.status.phase
                 })
+
     except ApiException as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch pod logs: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to fetch pod logs in namespace {namespace}: {str(e)}"
+        )
 
     return error_reports
 
