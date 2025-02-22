@@ -273,6 +273,8 @@ def fetch_error_logs(namespace: str) -> List[Dict[str, Any]]:
 # Background task to monitor Kubernetes logs
 async def monitor_task(payload: MonitorPayload):
     try:
+        # Log the initial payload
+        logger.info(f"Starting monitor task with payload: {payload}")
         # Extract settings
         settings = {s.label: s.default for s in payload.settings}
         logger.info(f"Settings received: {settings}")
@@ -310,6 +312,8 @@ async def monitor_task(payload: MonitorPayload):
         # Load kubeconfig
         try:
             config.load_kube_config(config_file=kubeconfig_path)
+            # After kubeconfig generation
+            logger.info(f"Successfully generated kubeconfig at: {kubeconfig_path}")
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to load kubeconfig: {str(e)}")
 
@@ -318,6 +322,9 @@ async def monitor_task(payload: MonitorPayload):
         logger.info(f"Error reports: {error_reports}")
 
         # Prepare message for Telex
+        # Before sending to Telex
+        logger.info(f"Attempting to send data to {payload.return_url}")
+
         if error_reports:
             message = "\n".join([
                 f"Pod: {report['pod_name']}, Namespace: {report['namespace']}\n" +
@@ -335,17 +342,18 @@ async def monitor_task(payload: MonitorPayload):
             "status": "error" if error_reports else "success"
         }
 
-        # Send data to Telex
+            # Send data to Telex
         async with httpx.AsyncClient() as client:
-            await client.post(payload.return_url, json=data)
-            logger.info(f"Data sent to Telex: {data}")
+            response = await client.post(payload.return_url, json=data)
+            logger.info(f"Telex response status: {response.status_code}")
+            logger.info(f"Telex response content: {response.text}")
 
     except Exception as e:
         logger.error(f"Error in monitor_task: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Tick Endpoint
-@app.post("/api/tick", status_code=202)
+@app.post("/tick", status_code=202)
 def monitor(payload: MonitorPayload, background_tasks: BackgroundTasks):
     background_tasks.add_task(monitor_task, payload)
     return {"status": "accepted"}
