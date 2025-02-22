@@ -335,3 +335,10 @@ async def monitor_task(payload: MonitorPayload):
 def monitor(payload: MonitorPayload, background_tasks: BackgroundTasks):
     background_tasks.add_task(monitor_task, payload)
     return {"status": "accepted"}
+
+
+@app.post("/test-webhook")
+async def test_webhook(request: Request):
+    data = await request.json()
+    print("Received webhook data:", data)
+    return {"status": "received"}

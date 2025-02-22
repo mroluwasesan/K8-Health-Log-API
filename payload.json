@@ -1,0 +1,55 @@
+{
+    "channel_id": "test-channel",
+    "return_url": "http://127.0.0.1:8000/test-webhook",
+    "settings": [
+        {
+            "label": "namespace",
+            "type": "text",
+            "required": true,
+            "default": "ingress-nginx"
+        },
+        {
+            "label": "context_name",
+            "type": "text",
+            "required": true,
+            "default": "ingress-nginx-context"
+        },
+        {
+            "label": "api_server_ip",
+            "type": "text",
+            "required": true,
+            "default": "ak8cluster-ak8-c13648-tvg186se.hcp.westus2.azmk8s.io"
+        },
+        {
+            "label": "api_server_port",
+            "type": "text",
+            "required": true,
+            "default": "443"
+        },
+        {
+            "label": "ca_cert",
+            "type": "text",
+            "required": true,
+            "default": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUU2RENDQXRDZ0F3SUJBZ0lRQVJrcVdZaHZHN2hZd2hRWEtQY0FIakFOQmdrcWhraUc5dzBCQVFzRkFEQU4KTVFzd0NRWURWUVFERXdKallUQWdGdzB5TlRBeU1qRXlNelU1TVRSYUdBOHlNRFUxTURJeU1qQXdNRGt4TkZvdwpEVEVMTUFrR0ExVUVBeE1DWTJFd2dnSWlNQTBHQ1NxR1NJYjNEUUVCQVFVQUE0SUNEd0F3Z2dJS0FvSUNBUURFCjE3OHdpK0dDeFIyUWczaHZOankycER2a2t3SnRQOFpPR2xuZDdhV0cwT2RPa1FxMUVlZitjbmNDOUFwMVpYYWcKZitOWEIvb0Z2ZlM5Ulp5alpLL0Q1U3phMEFGSUtiaklsZVVCS2lyUWc1WTkrMXE2R0tzdWlQVWx2QmlJczVCNQpsWVg3cjhpdDlqQ0xabmlmM2JsZnhZOHpHb1dWUnY0cEdtTkFid090dk1tYURXbDF2UXVTek0xSlZ6OGZMTDdzCjU1MGU4dWdHVXBTcUlHcExNSHlxOGpIVXFBSXA5Mnp4ZkpJekpjQjhmdHZBUzlCTk43VXNJK1F0YUpWbldxYkYKdHRwUzB1VHQ2ZjE1M01URi9WRlFOK0tRZGUyd3c4bkxYYkpZWWhxQzZ1aDdtQU84ZzVnbEdROW93YVAyWlBOeQorbUVXbmhpREgzTkFCYzlaMXBUN2NnQ3c4bGgyQjNCYVR1Q1NEbTdlenJiVUtUNENnTm1hRXhtcDZsemxNTWRFCkkrd0Y4V1FNNGJMTUdLUU9MRUlkVDZoMkdaa1p4dXZnc092RWw3QmpOQ25QZnZoRjVGYmMwbEx6K1c3V3BwSC8KL3NDV0dLZE5iR0xSa2dJZ05PemUvZVUwc3NPbXlPcldYV1BPYS93MkxCTHFZRmlNQk81cFNHRHVBTUxVWTFwMgpaNXk5cXVoOFRNZkpTdHNlUDJaYnpWNkVDcVVycmNicFZ1bXRmTjFJZGhrZDFYTEFrVCs4QnIxNTR3K2c1N3NBCnBzbUR1Tm9uOVZzOUtFK1pDRDVGYW1YWmh6NSt2SzdyU0I1TEdPOFBDd1N6SjlsNUdBaEZlZEkwVUFqcVVVN3MKbnE3Z3hxeVZmUjVvSDV0WWJERE1TTGVMcGZab2w5YzJLdzBlNFZUblN3SURBUUFCbzBJd1FEQU9CZ05WSFE4QgpBZjhFQkFNQ0FxUXdEd1lEVlIwVEFRSC9CQVV3QXdFQi96QWRCZ05WSFE0RUZnUVV6Z0pvWmNoV0hJSTRXWTAwCjFLTmoxdE16WTFzd0RRWUpLb1pJaHZjTkFRRUxCUUFEZ2dJQkFFZ0tmQ2xycm9iai85SUpuOEh2SWpCTEJsa3kKWmRGUm5rZTBwY3h5RDZVUmxwVzEyQlRsc2JGRUJXdVAwN2h0QnUyYnVleW1nRHp3VTg1MG1pZm54OW5IQ0IyYgppQlBXSU9mNUpYV1pUZmNNYnA2WjdiaXh1WlZ6WmJyQkZmYkVJdWQvM3FoaFBqNTA3U1p2SmdkZXN0MGI5VTF2Ck5PT3NYT1ZMZmhpL3ZacjhONUtpeUk1c1A3eGI0dC9UMmNoSXJKRzBZcHN1Z21QZFBGZWJVUHZocTdJcGc1bEgKUEM1NjEzaVI0MkxSMWhlS3dLWmJzc1FjOFRLakphclc5SkF0dVcwN2UvTGw4S05rZ1RVV1k5elg1WVFuelluUApXeTBNZ3lRS0RyK1NsS2hyL0h5VWZsa2MzdllqV2lwdlNQR0xFR2lyQUFDblZLeUZlajJqR3Q5SlhDWTRuYzRkClF1SGkzZmVleU9GUjFLOE9WTDVPejlYdnJWaERuZ2FHTXdGTnZQMzdva3pHTkRzZ1A1TmxYcC9CdCtlRXVleTgKaGFZekhwZ0c0TE1rL2pOOUJ4OXd1RVVjMlp5UFppZS91YUtNQVRaN3BHWFR0Z3doVEtFamxrNHpDSnBSS0c4NApMd1lVaDNpbWJIZWRzOE9nWk5PZ0RzYnFQdmlaZUsvVGplM0Z5MG1JTkxHNUlIa1dOVVNyeTkycXlpNFpmOXA4Ck1IdUpvMTdNRWRBZERKZzJDZ0pZNUNnTkpXaWREWHRoMHJqM1ZsVk9qR2t5SlQrTHJSeW9yb1hIK2tDcjN4MTEKZk94aGdHWVdoY1ppdHhIUEVIK2R6amtwNldpalZ4OWdLQklXYWtFaWY0NXhoYkZNNjJqUUNrM3pCRG5XbWFHUQp5L0hZZTF1cm14c3hUSmRpCi0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K"
+        },
+        {
+            "label": "service_account_token",
+            "type": "text",
+            "required": true,
+            "default": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImlsRzF1Wk1zc2hlOVNxUkd6WW51clFhMEx3QjFjc29hTGNFazRpdWtOUW8ifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJpbmdyZXNzLW5naW54Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZWNyZXQubmFtZSI6Im5naW54LWluZ3Jlc3MtdG9rZW4iLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlcnZpY2UtYWNjb3VudC5uYW1lIjoibmdpbngtaW5ncmVzcy1pbmdyZXNzLW5naW54Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQudWlkIjoiZWE4NDNmOGQtZmQyYy00YTc1LWJjYWEtYzlhZGE5ZjgzYjczIiwic3ViIjoic3lzdGVtOnNlcnZpY2VhY2NvdW50OmluZ3Jlc3Mtbmdpbng6bmdpbngtaW5ncmVzcy1pbmdyZXNzLW5naW54In0.awrkVok2_prvJtwdt2hsrgvjcZ24yMNOoTHC--HursM3DZD9OXGPV33kuUVP7jOTBDbnbNdRZTOUSjL6NkfExAnZD6mFx6T27moQ34b2qmOehZrgpXSygMZb3jY_Sh_G0XMfg89uAPS8RxISOGnIbDWwyAhNo13nPP9IzgM3tFyMzlrtqJvbCbBcP1i1e86HgMHQLH4_xt6DZq4w1TjKQtrFIbkhReAB-PPJ9Phh-AssuqZCcHXokech6onhFCxY9TJ2Fu1w-M8aWhu_cd2PiDa82Y-MBzVy6hipgCwTDAxdpN-U_qab7tf7o88mEe-e5h9C4UEYffa7TUSGBSUUbaLPtNVJWdbvWfDAY55js_0dUwSuyccK9LFVbvev3IxtdAaeSpCNAIdf-MFuk2IDC9tZTYeyekYL2e6aMyMsqUL0_20RepdHxsatxP8idUnueqfiJqhtIYF3WWD30BHAO_4F6qg99qpqU_227OMosuTS7-aCABqZnFQHMTa_eC_rP83dkyrzZFZU5wr8B1nGfuZEWgRzrCJroT-zGtjswnR-SRJT48wD4fBvMyk8-_ArCBzs6B06d9JkzsV3Gu4QsKrD88lSUQwRZxOylat1HiYG-NJ9KQHqVQhyErxtzTfpXfgajOOMNIN3lcywG1NHbLq0nNPLfVSOJqOgwnUPOBA"
+        },
+        {
+            "label": "cluster_name",
+            "type": "text",
+            "required": true,
+            "default": "ingress-nginx-cluster"
+        },
+        {
+            "label": "user_name",
+            "type": "text",
+            "required": true,
+            "default": "ingress-nginx-user"
+        }
+    ]
+}
+
