@@ -77,7 +77,7 @@ def get_integration_json(request: Request):
                     "type": "text",
                     "required": True,
                     "default": "kubernetes-admin@kubernetes",
-                    "description": "The name of the kubeconfig context. (kubectl config get-contexts)"
+                    "description": "The name of the kubeconfig context."
                 },
                 {
                     "label": "interval",
@@ -92,42 +92,42 @@ def get_integration_json(request: Request):
                     "type": "text",
                     "required": True,
                     "default": "",
-                    "description": "The IP address of the Kubernetes API server. (kubectl get svc -n default)"
+                    "description": "The IP address of the Kubernetes API server."
                 },
                 {
                     "label": "api_server_port",
                     "type": "text",
                     "required": True,
                     "default": "6443",
-                    "description": "The port of the Kubernetes API server. (kubectl get svc -n default)"
+                    "description": "The port of the Kubernetes API server."
                 },
                 {
                     "label": "ca_cert",
                     "type": "text",
                     "required": True,
                     "default": "",
-                    "description": "The base64-encoded CA certificate for the Kubernetes cluster. (kubectl config view --raw -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')"
+                    "description": "The base64-encoded CA certificate for the Kubernetes cluster."
                 },
                 {
                     "label": "service_account_token",
                     "type": "text",
                     "required": True,
                     "default": "",
-                    "description": "The service account token for authenticating with the Kubernetes API server. (kubectl get secrets -o jsonpath='{.items[?(@.metadata.annotations[\"kubernetes.io/service-account.name\"]==\"default\")].data.token}' | base64 --decode)"
+                    "description": "The service account token for authenticating with the Kubernetes API server."
                 },
                 {
                     "label": "cluster_name",
                     "type": "text",
                     "required": True,
                     "default": "kubernetes",
-                    "description": "The name of the Kubernetes cluster in the kubeconfig. (kubectl config get-clusters)"
+                    "description": "The name of the Kubernetes cluster in the kubeconfig."
                 },
                 {
                     "label": "user_name",
                     "type": "text",
                     "required": True,
                     "default": "k8s-monitor",
-                    "description": "The name of the user in the kubeconfig. (kubectl config get-users)"
+                    "description": "The name of the user in the kubeconfig."
                 }
             ],
             "target_url": f"{base_url}/api/target",
