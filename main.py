@@ -38,6 +38,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+import logging
+
+# Set up logging to both file and console
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(message)s',
+    handlers=[
+        logging.FileHandler('app.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
 # Serve the logo
 @app.get("/logo")
 def get_logo():
