@@ -6,13 +6,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from typing import List, Dict, Any
 import httpx
-import yaml
 import logging
 import os
 from string import Template
+import uuid
 
 # Set up logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('app.log'),
+        logging.StreamHandler()
+    ]
+)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
@@ -38,28 +45,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-import logging
-
-# Set up logging to both file and console
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s %(levelname)s %(message)s',
-    handlers=[
-        logging.FileHandler('app.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
+# In-memory store for active monitoring tasks
+active_tasks = {}
 
 # Serve the logo
 @app.get("/logo")
-def get_logo():
+async def get_logo():
     return FileResponse("uptime.png")
 
 # Integration JSON Endpoint
 @app.get("/api/integration.json")
-def get_integration_json(request: Request):
+async def get_integration_json(request: Request):
     base_url = str(request.base_url).rstrip("/")
     return {
         "data": {
@@ -76,7 +72,7 @@ def get_integration_json(request: Request):
             },
             "integration_category": "Monitoring & Logging",
             "integration_type": "interval",
-            "key_features": ["- monitors kubernetes"],
+            "key_features": ["Real-time Kubernetes error monitoring"],
             "author": "Rotimi Oluwasesan",
             "settings": [
                 {
@@ -84,14 +80,35 @@ def get_integration_json(request: Request):
                     "type": "text",
                     "required": True,
                     "default": "default",
-                    "description": "The Kubernetes namespace to monitor. (kubectl get namespaces)"
+                    "description": "Kubernetes namespace to monitor"
                 },
                 {
-                    "label": "context_name",
+                    "label": "cluster_server",
                     "type": "text",
                     "required": True,
-                    "default": "kubernetes-admin@kubernetes",
-                    "description": "The name of the kubeconfig context."
+                    "default": "",
+                    "description": "Kubernetes API server URL (e.g. https://api.cluster.local:6443)"
+                },
+                {
+                    "label": "cluster_name",
+                    "type": "text",
+                    "required": True,
+                    "default": "",
+                    "description": "Kubernetes cluster name"
+                },
+                {
+                    "label": "ca_cert",
+                    "type": "text",
+                    "required": True,
+                    "default": "",
+                    "description": "Base64-encoded cluster CA certificate"
+                },
+                {
+                    "label": "service_account_token",
+                    "type": "text",
+                    "required": True,
+                    "default": "",
+                    "description": "Service account token for API access"
                 },
                 {
                     "label": "interval",
@@ -99,49 +116,7 @@ def get_integration_json(request: Request):
                     "options": ["1", "5", "10", "15", "30", "60"],
                     "required": True,
                     "default": "5",
-                    "description": "Interval (in minutes) at which logs are checked."
-                },
-                {
-                    "label": "api_server_ip",
-                    "type": "text",
-                    "required": True,
-                    "default": "",
-                    "description": "The IP address of the Kubernetes API server."
-                },
-                {
-                    "label": "api_server_port",
-                    "type": "text",
-                    "required": True,
-                    "default": "6443",
-                    "description": "The port of the Kubernetes API server."
-                },
-                {
-                    "label": "ca_cert",
-                    "type": "text",
-                    "required": True,
-                    "default": "",
-                    "description": "The base64-encoded CA certificate for the Kubernetes cluster."
-                },
-                {
-                    "label": "service_account_token",
-                    "type": "text",
-                    "required": True,
-                    "default": "",
-                    "description": "The service account token for authenticating with the Kubernetes API server."
-                },
-                {
-                    "label": "cluster_name",
-                    "type": "text",
-                    "required": True,
-                    "default": "kubernetes",
-                    "description": "The name of the Kubernetes cluster in the kubeconfig."
-                },
-                {
-                    "label": "user_name",
-                    "type": "text",
-                    "required": True,
-                    "default": "k8s-monitor",
-                    "description": "The name of the user in the kubeconfig."
+                    "description": "Check interval in minutes"
                 }
             ],
             "target_url": f"{base_url}/api/target",
@@ -149,218 +124,144 @@ def get_integration_json(request: Request):
         }
     }
 
-# Function to generate kubeconfig
-def generate_kubeconfig(
-    api_server_ip: str,
-    api_server_port: str,
-    ca_cert: str,
-    service_account_token: str,
-    cluster_name: str,
-    user_name: str,
-    context_name: str,
-    namespace: str
-) -> str:
-    # Load the kubeconfig template
-    try:
-        with open("kubeconfig_template.yaml", "r") as file:
-            template = Template(file.read())
-    except FileNotFoundError:
-        logger.error("kubeconfig_template.yaml not found. Ensure the file exists in the project directory.")
-        raise HTTPException(status_code=500, detail="kubeconfig_template.yaml not found.")
+def generate_kubeconfig(settings: dict) -> str:
+    required_fields = ['cluster_server', 'cluster_name', 'ca_cert', 'service_account_token', 'namespace']
+    missing = [field for field in required_fields if not settings.get(field)]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing)}")
 
-    # Populate the template with user input
-    kubeconfig_content = template.substitute(
-        cluster_name=cluster_name,
-        api_server_ip=api_server_ip,
-        api_server_port=api_server_port,
-        ca_cert=ca_cert,
-        user_name=user_name,
-        service_account_token=service_account_token,
-        context_name=context_name,
-        namespace=namespace
-    )
+    template_path = "kubeconfig_template.yaml"
+    if not os.path.exists(template_path):
+        logger.error("Kubeconfig template not found")
+        raise HTTPException(status_code=500, detail="Kubeconfig template missing")
 
-    # Save the populated kubeconfig to a temporary file
-    kubeconfig_path = "/tmp/kubeconfig.yaml"
     try:
-        with open(kubeconfig_path, "w") as file:
-            file.write(kubeconfig_content)
-        logger.info(f"Kubeconfig saved to: {kubeconfig_path}")
+        with open(template_path, "r") as f:
+            template = Template(f.read())
+        
+        context_name = f"{settings['namespace']}-context"
+        kubeconfig_content = template.substitute(
+            CLUSTER_NAME=settings['cluster_name'],
+            CLUSTER_SERVER=settings['cluster_server'],
+            CLUSTER_CA=settings['ca_cert'],
+            TOKEN=settings['service_account_token'],
+            NAMESPACE=settings['namespace'],
+            CONTEXT_NAME=context_name
+        )
+
+        kubeconfig_path = f"/tmp/kubeconfig-{uuid.uuid4()}.yaml"
+        with open(kubeconfig_path, "w") as f:
+            f.write(kubeconfig_content)
+        
+        logger.info(f"Generated kubeconfig at {kubeconfig_path}")
+        return kubeconfig_path
+
     except Exception as e:
-        logger.error(f"Failed to write kubeconfig to {kubeconfig_path}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to write kubeconfig: {str(e)}")
+        logger.error(f"Kubeconfig generation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Kubeconfig generation failed")
 
-    # Export the KUBECONFIG environment variable
-    os.environ["KUBECONFIG"] = kubeconfig_path
-    logger.info(f"KUBECONFIG environment variable set to: {kubeconfig_path}")
-
-    return kubeconfig_path
-
-# Function to fetch pod logs and check for errors
-def fetch_error_logs(namespace: str) -> List[Dict[str, Any]]:
-    v1 = client.CoreV1Api()
-    error_reports = []
-
+async def fetch_error_logs(namespace: str) -> List[Dict[str, Any]]:
     try:
-        # Fetch all pods in the specified namespace
+        v1 = client.CoreV1Api()
         pods = v1.list_namespaced_pod(namespace)
+        errors = []
+
         for pod in pods.items:
             pod_name = pod.metadata.name
-
             try:
-                # Enhanced log fetching with more options
-                pod_logs = v1.read_namespaced_pod_log(
-                    pod_name, 
+                logs = v1.read_namespaced_pod_log(
+                    pod_name,
                     namespace,
-                    tail_lines=1000,  # Get last 1000 lines
-                    timestamps=True,   # Include timestamps
-                    previous=False     # Current container logs
+                    tail_lines=100,
+                    timestamps=True
                 )
-                logs = pod_logs.split("\n")
-
-                # Enhanced error detection
-                error_logs = []
-                for i, log in enumerate(logs):
-                    # Check for various error indicators
-                    if any(indicator in log.lower() for indicator in [
-                        "error",
-                        "exception",
-                        "fail",
-                        "fatal",
-                        "panic",
-                        "critical"
-                    ]):
-                        # Include context (2 lines before and after)
-                        start_idx = max(0, i - 2)
-                        end_idx = min(len(logs), i + 3)
-                        context_logs = logs[start_idx:end_idx]
-                        error_logs.extend(context_logs)
-                        error_logs.append("---")  # Separator
-
-                if error_logs:
-                    error_reports.append({
-                        "pod_name": pod_name,
-                        "namespace": namespace,
-                        "logs": error_logs,
+                error_lines = [
+                    line for line in logs.split('\n') 
+                    if any(keyword in line.lower() for keyword in ['error', 'exception', 'fail'])
+                ]
+                if error_lines:
+                    errors.append({
+                        "pod": pod_name,
+                        "errors": error_lines[-5:],  # Last 5 error lines
                         "status": pod.status.phase,
-                        "container_statuses": [
-                            {
-                                "name": status.name,
-                                "ready": status.ready,
-                                "restart_count": status.restart_count,
-                                "state": str(status.state)
-                            }
-                            for status in (pod.status.container_statuses or [])
-                        ]
+                        "restarts": sum(container.restart_count for container in pod.status.container_statuses)
                     })
-
             except ApiException as e:
-                error_reports.append({
-                    "pod_name": pod_name,
-                    "namespace": namespace,
-                    "error": f"Failed to fetch logs: {str(e)}",
-                    "status": pod.status.phase
-                })
+                logger.warning(f"Failed to get logs for {pod_name}: {str(e)}")
+        
+        return errors
 
     except ApiException as e:
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Failed to fetch pod logs in namespace {namespace}: {str(e)}"
-        )
+        logger.error(f"Kubernetes API error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to access Kubernetes API")
 
-    return error_reports
-
-# Background task to monitor Kubernetes logs
-async def monitor_task(payload: MonitorPayload):
+async def send_to_telex(return_url: str, message: dict):
     try:
-        # Log the initial payload
-        logger.info(f"Starting monitor task with payload: {payload}")
-        # Extract settings
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(return_url, json=message)
+            response.raise_for_status()
+            logger.info(f"Successfully sent to Telex: {response.status_code}")
+    except Exception as e:
+        logger.error(f"Failed to send to Telex: {str(e)}")
+
+async def monitoring_worker(task_id: str, payload: MonitorPayload):
+    try:
+        logger.info(f"Starting monitoring task {task_id}")
         settings = {s.label: s.default for s in payload.settings}
-        logger.info(f"Settings received: {settings}")
-
-        namespace = settings.get("namespace", "default")
-        api_server_ip = settings.get("api_server_ip")
-        api_server_port = settings.get("api_server_port", "6443")
-        ca_cert = settings.get("ca_cert")
-        service_account_token = settings.get("service_account_token")
-        cluster_name = settings.get("cluster_name", "kubernetes")
-        user_name = settings.get("user_name", "k8s-monitor")
-        context_name = settings.get("context_name", "kubernetes-admin@kubernetes")
-
-        # Validate required settings
-        required_fields = ["api_server_ip", "ca_cert", "service_account_token", "context_name"]
-        missing = [field for field in required_fields if not settings.get(field)]
-        if missing:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Missing required settings: {', '.join(missing)}"
-            )
-
+        
         # Generate kubeconfig
-        kubeconfig_path = generate_kubeconfig(
-            api_server_ip,
-            api_server_port,
-            ca_cert,
-            service_account_token,
-            cluster_name,
-            user_name,
-            context_name,
-            namespace
-        )
-
-        # Load kubeconfig
-        try:
-            config.load_kube_config(config_file=kubeconfig_path)
-            # After kubeconfig generation
-            logger.info(f"Successfully generated kubeconfig at: {kubeconfig_path}")
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to load kubeconfig: {str(e)}")
-
-        # Fetch error logs
-        error_reports = fetch_error_logs(namespace)
-        logger.info(f"Error reports: {error_reports}")
-
-        # Prepare message for Telex
-        # Before sending to Telex
-        logger.info(f"Attempting to send data to {payload.return_url}")
-
-        if error_reports:
-            message = "\n".join([
-                f"Pod: {report['pod_name']}, Namespace: {report['namespace']}\n" +
-                "\n".join(report['logs'])
-                for report in error_reports
-            ])
-        else:
-            message = "No errors found in Kubernetes logs."
-
-        # Data follows Telex webhook format
-        data = {
-            "message": message,
-            "username": "K8s Health Monitor",
-            "event_name": "K8s Error Report",
-            "status": "error" if error_reports else "success"
+        kubeconfig_path = generate_kubeconfig(settings)
+        
+        # Load configuration
+        config.load_kube_config(config_file=kubeconfig_path)
+        
+        # Fetch logs
+        errors = await fetch_error_logs(settings['namespace'])
+        
+        # Prepare response
+        status = "error" if errors else "success"
+        message = {
+            "status": status,
+            "message": f"Found {len(errors)} pods with errors" if errors else "No errors detected",
+            "details": errors if errors else None,
+            "channel_id": payload.channel_id
         }
 
-            # Send data to Telex
-        async with httpx.AsyncClient() as client:
-            response = await client.post(payload.return_url, json=data)
-            logger.info(f"Telex response status: {response.status_code}")
-            logger.info(f"Telex response content: {response.text}")
+        # Send response to Telex
+        await send_to_telex(payload.return_url, message)
 
     except Exception as e:
-        logger.error(f"Error in monitor_task: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Monitoring task failed: {str(e)}")
+    finally:
+        # Clean up task
+        if task_id in active_tasks:
+            del active_tasks[task_id]
+        # Clean up kubeconfig
+        if os.path.exists(kubeconfig_path):
+            os.remove(kubeconfig_path)
 
-# Tick Endpoint
-@app.post("/tick", status_code=202)
-def monitor(payload: MonitorPayload, background_tasks: BackgroundTasks):
-    background_tasks.add_task(monitor_task, payload)
-    return {"status": "accepted"}
+@app.post("/api/tick", status_code=202)
+async def handle_tick(payload: MonitorPayload, background_tasks: BackgroundTasks):
+    task_id = str(uuid.uuid4())
+    active_tasks[task_id] = {
+        "status": "started",
+        "started_at": datetime.now().isoformat()
+    }
+    
+    background_tasks.add_task(monitoring_worker, task_id, payload)
+    
+    return {
+        "status": "accepted",
+        "task_id": task_id,
+        "message": "Monitoring task started successfully"
+    }
 
+@app.get("/api/tasks/{task_id}")
+async def get_task_status(task_id: str):
+    return active_tasks.get(task_id, {"status": "not_found"})
 
 @app.post("/test-webhook")
 async def test_webhook(request: Request):
     data = await request.json()
-    print("Received webhook data:", data)
+    logger.info(f"Received test webhook: {data}")
     return {"status": "received"}
