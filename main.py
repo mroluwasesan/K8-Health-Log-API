@@ -1,14 +1,16 @@
 from fastapi import FastAPI, Request, BackgroundTasks, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel 
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from typing import List, Dict, Any
+from typing import List, Dict, Any, ContextManager
+from contextlib import contextmanager
 import httpx
 import yaml
 import logging
 import os
+import tempfile
 from string import Template
 
 # Set up logging
@@ -71,6 +73,7 @@ app.add_middleware(
 REQUIRED_K8S_SETTINGS = [
     "cluster_name",
     "api_server_url",
+    "api_server_ip",
     "api_server_port",
     "ca_cert",
     "service_account_token",
@@ -160,6 +163,23 @@ def get_integration_json(request: Request):
         }
     }
 
+@contextmanager
+def temp_kubeconfig() -> ContextManager[str]:
+    """Context manager that yields path to a temporary kubeconfig file and ensures cleanup."""
+    # Create temporary file in current directory
+    tmp = tempfile.NamedTemporaryFile(
+        prefix='kubeconfig_',
+        suffix='.yaml',
+        dir=os.getcwd(),
+        delete=False
+    )
+    try:
+        yield tmp.name
+    finally:
+        # Clean up the temp file
+        if os.path.exists(tmp.name):
+            os.unlink(tmp.name)
+
 # Function to generate kubeconfig
 def generate_kubeconfig(
     api_server_url: str,
@@ -169,8 +189,6 @@ def generate_kubeconfig(
     username: str,
     namespace: str
 ) -> str:
-    # Ensure directories exist
-    os.makedirs("/tmp", exist_ok=True)
     
     # Load the kubeconfig template
     try:
@@ -192,24 +210,22 @@ def generate_kubeconfig(
         namespace=namespace
     )
 
-    # Save the populated kubeconfig to a temporary file
-    kubeconfig_path = "/tmp/kubeconfig.yaml"
-    try:
-        with open(kubeconfig_path, "w") as file:
-            file.write(kubeconfig_content)
-        logger.info(f"Kubeconfig saved to: {kubeconfig_path}")
-    except Exception as e:
-        logger.error(f"Failed to write kubeconfig to {kubeconfig_path}: {str(e)}")
-        # Try to create directory again in case it was deleted
-        os.makedirs("/tmp", exist_ok=True)
-        with open(kubeconfig_path, "w") as file:
-            file.write(kubeconfig_content)
-
-    # Export the KUBECONFIG environment variable
-    os.environ["KUBECONFIG"] = kubeconfig_path
-    logger.info(f"KUBECONFIG environment variable set to: {kubeconfig_path}")
-
-    return kubeconfig_path
+    # Create temporary kubeconfig file
+    with temp_kubeconfig() as kubeconfig_path:
+        try:
+            with open(kubeconfig_path, "w") as file:
+                file.write(kubeconfig_content)
+            logger.info(f"Kubeconfig saved to: {kubeconfig_path}")
+            
+            # Export the KUBECONFIG environment variable
+            os.environ["KUBECONFIG"] = kubeconfig_path
+            logger.info(f"KUBECONFIG environment variable set to: {kubeconfig_path}")
+            
+            return kubeconfig_path
+            
+        except Exception as e:
+            logger.error(f"Failed to write kubeconfig: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to write kubeconfig: {str(e)}")
 
 # Function to fetch pod logs and check for errors
 def fetch_error_logs(namespace: str) -> List[Dict[str, Any]]:
@@ -287,6 +303,7 @@ def fetch_error_logs(namespace: str) -> List[Dict[str, Any]]:
 
 # Background task to monitor Kubernetes logs
 async def monitor_task(payload: MonitorPayload):
+    kubeconfig_path = None
     try:
         # Extract settings
         settings = {s.label: s.default for s in payload.settings}
@@ -346,11 +363,18 @@ async def monitor_task(payload: MonitorPayload):
             "event_name": "K8s Error Report",
             "status": "error" if error_reports else "success"
         }
-
         # Send data to Telex
         async with httpx.AsyncClient() as client:
             await client.post(payload.return_url, json=data)
             logger.info(f"Data sent to Telex: {data}")
+        
+        # Clean up the kubeconfig file
+        if kubeconfig_path and os.path.exists(kubeconfig_path):
+            try:
+                os.unlink(kubeconfig_path)
+                logger.info(f"Cleaned up kubeconfig file: {kubeconfig_path}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up kubeconfig file: {str(e)}")
 
     except Exception as e:
         logger.error(f"Error in monitor_task: {str(e)}")
@@ -368,4 +392,3 @@ async def test_webhook(request: Request):
     data = await request.json()
     print("Received webhook data:", data)
     return {"status": "received"}
-
