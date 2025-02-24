@@ -15,6 +15,36 @@ from string import Template
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def ensure_directories():
+    """Ensure required directories exist"""
+    os.makedirs("/tmp", exist_ok=True)
+    if not os.path.exists("kubeconfig_template.yaml"):
+        template_content = """apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    certificate-authority-data: $ca_cert
+    server: $api_server_url
+name: $cluster_name
+contexts:
+- context:
+    cluster: $cluster_name
+    namespace: $namespace
+    user: $user_name
+name: ${cluster_name}-context
+current-context: ${cluster_name}-context
+preferences: {}
+users:
+- name: $user_name
+user:
+    token: $service_account_token"""
+        with open("kubeconfig_template.yaml", "w") as f:
+            f.write(template_content)
+        logger.info("Created kubeconfig template file")
+
+# Call initialization
+ensure_directories()
+
 app = FastAPI()
 
 # Define models
@@ -41,10 +71,10 @@ app.add_middleware(
 REQUIRED_K8S_SETTINGS = [
     "cluster_name",
     "api_server_url",
+    "api_server_port",
     "ca_cert",
     "service_account_token",
     "namespace"
-    "api_server_ip",
 ]
 
 # Serve the logo
@@ -139,13 +169,18 @@ def generate_kubeconfig(
     username: str,
     namespace: str
 ) -> str:
+    # Ensure directories exist
+    os.makedirs("/tmp", exist_ok=True)
+    
     # Load the kubeconfig template
     try:
         with open("kubeconfig_template.yaml", "r") as file:
             template = Template(file.read())
     except FileNotFoundError:
-        logger.error("kubeconfig_template.yaml not found. Ensure the file exists in the project directory.")
-        raise HTTPException(status_code=500, detail="kubeconfig_template.yaml not found.")
+        logger.error("kubeconfig_template.yaml not found. Creating template file...")
+        ensure_directories()  # This will create the template file
+        with open("kubeconfig_template.yaml", "r") as file:
+            template = Template(file.read())
 
     # Populate the template with user input
     kubeconfig_content = template.substitute(
@@ -154,7 +189,6 @@ def generate_kubeconfig(
         ca_cert=ca_cert,
         user_name=username,
         service_account_token=service_account_token,
-        context_name=context_name,
         namespace=namespace
     )
 
@@ -166,7 +200,10 @@ def generate_kubeconfig(
         logger.info(f"Kubeconfig saved to: {kubeconfig_path}")
     except Exception as e:
         logger.error(f"Failed to write kubeconfig to {kubeconfig_path}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to write kubeconfig: {str(e)}")
+        # Try to create directory again in case it was deleted
+        os.makedirs("/tmp", exist_ok=True)
+        with open(kubeconfig_path, "w") as file:
+            file.write(kubeconfig_content)
 
     # Export the KUBECONFIG environment variable
     os.environ["KUBECONFIG"] = kubeconfig_path
@@ -331,3 +368,4 @@ async def test_webhook(request: Request):
     data = await request.json()
     print("Received webhook data:", data)
     return {"status": "received"}
+
