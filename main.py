@@ -1,51 +1,21 @@
 from fastapi import FastAPI, Request, BackgroundTasks, HTTPException
-from pydantic import BaseModel 
+from pydantic import BaseModel
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from typing import List, Dict, Any, ContextManager
 from contextlib import contextmanager
+import tempfile
 import httpx
 import yaml
 import logging
 import os
-import tempfile
 from string import Template
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-def ensure_directories():
-    """Ensure required directories exist"""
-    os.makedirs("/tmp", exist_ok=True)
-    if not os.path.exists("kubeconfig_template.yaml"):
-        template_content = """apiVersion: v1
-kind: Config
-clusters:
-- cluster:
-    certificate-authority-data: $ca_cert
-    server: $api_server_url
-name: $cluster_name
-contexts:
-- context:
-    cluster: $cluster_name
-    namespace: $namespace
-    user: $user_name
-name: ${cluster_name}-context
-current-context: ${cluster_name}-context
-preferences: {}
-users:
-- name: $user_name
-user:
-    token: $service_account_token"""
-        with open("kubeconfig_template.yaml", "w") as f:
-            f.write(template_content)
-        logger.info("Created kubeconfig template file")
-
-# Call initialization
-ensure_directories()
 
 app = FastAPI()
 
@@ -73,12 +43,26 @@ app.add_middleware(
 REQUIRED_K8S_SETTINGS = [
     "cluster_name",
     "api_server_url",
-    "api_server_ip",
-    "api_server_port",
     "ca_cert",
     "service_account_token",
-    "namespace"
+    "namespace",
+    "api_server_ip",
 ]
+
+@contextmanager
+def temp_kubeconfig() -> ContextManager[str]:
+    """Context manager for temporary kubeconfig file in current directory."""
+    tmp = tempfile.NamedTemporaryFile(
+        prefix='kubeconfig_',
+        suffix='.yaml',
+        dir=os.getcwd(),
+        delete=False
+    )
+    try:
+        yield tmp.name
+    finally:
+        if os.path.exists(tmp.name):
+            os.unlink(tmp.name)
 
 # Serve the logo
 @app.get("/logo")
@@ -163,23 +147,6 @@ def get_integration_json(request: Request):
         }
     }
 
-@contextmanager
-def temp_kubeconfig() -> ContextManager[str]:
-    """Context manager that yields path to a temporary kubeconfig file and ensures cleanup."""
-    # Create temporary file in current directory
-    tmp = tempfile.NamedTemporaryFile(
-        prefix='kubeconfig_',
-        suffix='.yaml',
-        dir=os.getcwd(),
-        delete=False
-    )
-    try:
-        yield tmp.name
-    finally:
-        # Clean up the temp file
-        if os.path.exists(tmp.name):
-            os.unlink(tmp.name)
-
 # Function to generate kubeconfig
 def generate_kubeconfig(
     api_server_url: str,
@@ -189,16 +156,13 @@ def generate_kubeconfig(
     username: str,
     namespace: str
 ) -> str:
-    
     # Load the kubeconfig template
     try:
         with open("kubeconfig_template.yaml", "r") as file:
             template = Template(file.read())
     except FileNotFoundError:
-        logger.error("kubeconfig_template.yaml not found. Creating template file...")
-        ensure_directories()  # This will create the template file
-        with open("kubeconfig_template.yaml", "r") as file:
-            template = Template(file.read())
+        logger.error("kubeconfig_template.yaml not found. Ensure the file exists in the project directory.")
+        raise HTTPException(status_code=500, detail="kubeconfig_template.yaml not found.")
 
     # Populate the template with user input
     kubeconfig_content = template.substitute(
@@ -210,7 +174,7 @@ def generate_kubeconfig(
         namespace=namespace
     )
 
-    # Create temporary kubeconfig file
+    # Use context manager to handle the temporary file
     with temp_kubeconfig() as kubeconfig_path:
         try:
             with open(kubeconfig_path, "w") as file:
@@ -222,7 +186,6 @@ def generate_kubeconfig(
             logger.info(f"KUBECONFIG environment variable set to: {kubeconfig_path}")
             
             return kubeconfig_path
-            
         except Exception as e:
             logger.error(f"Failed to write kubeconfig: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Failed to write kubeconfig: {str(e)}")
@@ -326,7 +289,7 @@ async def monitor_task(payload: MonitorPayload):
                 detail=f"Missing required settings: {', '.join(missing)}"
             )
 
-        # Generate kubeconfig
+        # Generate kubeconfig in the current directory
         kubeconfig_path = generate_kubeconfig(
             api_server_url=api_server_url,
             ca_cert=ca_cert,
@@ -337,10 +300,7 @@ async def monitor_task(payload: MonitorPayload):
         )
 
         # Load kubeconfig
-        try:
-            config.load_kube_config(config_file=kubeconfig_path)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to load kubeconfig: {str(e)}")
+        config.load_kube_config(config_file=kubeconfig_path)
 
         # Fetch error logs
         error_reports = fetch_error_logs(namespace)
@@ -363,18 +323,11 @@ async def monitor_task(payload: MonitorPayload):
             "event_name": "K8s Error Report",
             "status": "error" if error_reports else "success"
         }
+
         # Send data to Telex
         async with httpx.AsyncClient() as client:
             await client.post(payload.return_url, json=data)
             logger.info(f"Data sent to Telex: {data}")
-        
-        # Clean up the kubeconfig file
-        if kubeconfig_path and os.path.exists(kubeconfig_path):
-            try:
-                os.unlink(kubeconfig_path)
-                logger.info(f"Cleaned up kubeconfig file: {kubeconfig_path}")
-            except Exception as e:
-                logger.warning(f"Failed to clean up kubeconfig file: {str(e)}")
 
     except Exception as e:
         logger.error(f"Error in monitor_task: {str(e)}")
@@ -386,9 +339,9 @@ def monitor(payload: MonitorPayload, background_tasks: BackgroundTasks):
     background_tasks.add_task(monitor_task, payload)
     return {"status": "accepted"}
 
-
 @app.post("/test-webhook")
 async def test_webhook(request: Request):
     data = await request.json()
     print("Received webhook data:", data)
     return {"status": "received"}
+
